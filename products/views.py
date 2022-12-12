@@ -1,5 +1,7 @@
 from django.shortcuts import render
-from .models import Product
+
+from products.models import Product
+
 
 def get_products(request,slug):
     product = Product.objects.get(slug=slug)

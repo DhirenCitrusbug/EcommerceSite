@@ -1,9 +1,14 @@
 from django.shortcuts import render, redirect
-from django.contrib import messages
+
 from django.contrib.auth.models import User
 from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth import authenticate, login, logout
 from .models import Profile
+from accounts.models import Cart, CartItem
+from .models import Coupon, Product, SizeVariant
+from django.contrib import messages
+from ecomm import settings
+import razorpay
 def login_page(request):
     if request.method == 'POST':
         email = request.POST.get('email')
@@ -58,3 +63,73 @@ def activate_email(request, email_token):
         return redirect('/')
     except Exception as e:
          return HttpResponse('Invalid Email token')
+
+
+
+def add_to_cart(request, uid):
+     
+    variant = request.GET.get('variant')
+    product = Product.objects.get(uid=uid)
+    user = request.user
+    cart, _ = Cart.objects.get_or_create(user=user, is_paid=False)
+    cart_item = CartItem.objects.create(cart=cart,product=product)
+
+    if variant:
+       variant = request.GET.get('variant')
+       size_variant = SizeVariant.objects.get(size_name = variant)
+       cart_item.size_variant = size_variant
+       cart_item.save()
+    return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+def remove_from_cart(request,cart_item_uid):
+    cart_item = CartItem.objects.get(uid=cart_item_uid)
+    cart_item.delete()
+    cart = Cart.objects.get(user=request.user, is_paid=False)
+    if cart.cart_items.all().count()==0:
+        cart.delete()
+    # if cart.coupon:
+    if cart.get_total_price() < cart.coupon.minimum_amount:
+        cart.coupon = None
+        cart.save()
+    return HttpResponseRedirect(request.META.get('HTTP_REFERER')) 
+
+
+def cart(request):
+    cart =  Cart.objects.get_or_create(is_paid=False, user=request.user)
+    client = razorpay.Client(auth=(settings.razor_pay_key_id, settings.key_secret))
+    data = { "amount": cart[0].get_discounted_price()*100, "currency": "INR", "receipt": "order_rcptid_11" }
+    payment = client.order.create(data=data)
+    contex = {'cart' : cart[0],'payment':payment,'key':settings.razor_pay_key_id}
+    cart[0].razor_pay_order_id = payment['id']
+    cart[0].save()
+    print(contex)
+    return render(request, 'accounts/cart.html',contex)
+
+
+def apply_coupon(request):
+    if request.method == 'POST':
+        cart = Cart.objects.get(user=request.user, is_paid=False)
+        try:
+            coupon = Coupon.objects.get(coupon_code=request.POST.get('coupon_code'))
+        except:
+            messages.warning(request,"Invalid Coupon")
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER')) 
+        if cart.get_total_price() < coupon.minimum_amount:
+            messages.warning(request,f"The Minimum Amount for Coupon is {coupon.minimum_amount}")
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+        if cart.coupon:
+             messages.warning(request,"Coupon Already In Use")
+        else:
+            cart.coupon = coupon
+            cart.save()
+            coupon.is_expired = True
+            coupon.save()
+            messages.success(request,"Coupon Aplied")
+
+    return HttpResponseRedirect(request.META.get('HTTP_REFERER')) 
+
+def remove_coupon(request):
+    cart = Cart.objects.get(user=request.user, is_paid=False)
+    cart.coupon = None
+    cart.save()
+    return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
