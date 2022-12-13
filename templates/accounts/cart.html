@@ -103,7 +103,7 @@
                         </dl>
                         <hr>
                         <p class="text-center mb-3">
-                            <img src="images/misc/payments.png" height="26">
+                            <img src="/media/images/misc/payments.png" height="26">
                         </p>
                         
                 </div> <!-- card-body.// -->
@@ -113,7 +113,6 @@
     
     </div> <!-- container .//  -->
     </section>
-<button id="">Pay</button>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 var options = {
@@ -125,9 +124,8 @@ var options = {
     "image": "https://example.com/your_logo",
     "order_id": "{{payment.id}}", //This is a sample Order ID. Pass the `id` obtained in the response of Step 1
     "handler": function (response){
-        alert(response.razorpay_payment_id);
-        alert(response.razorpay_order_id);
-        alert(response.razorpay_signature)
+        console.log(response.razorpay_signature);
+        window.location.href = `http://localhost:8000/accounts/success/?order_id=${response.razorpay_order_id}&razorpay_payment_id=${response.razorpay_payment_id}&razorpay_signature=${response.razorpay_signature}`
     },
     "prefill": {
         "name": "Gaurav Kumar",

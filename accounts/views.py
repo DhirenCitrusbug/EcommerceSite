@@ -83,27 +83,31 @@ def add_to_cart(request, uid):
 
 def remove_from_cart(request,cart_item_uid):
     cart_item = CartItem.objects.get(uid=cart_item_uid)
+    cart_uid = cart_item.cart.uid
     cart_item.delete()
-    cart = Cart.objects.get(user=request.user, is_paid=False)
+    cart = Cart.objects.get(pk=cart_uid)
+    if cart.coupon:
+        if cart.get_total_price() < cart.coupon.minimum_amount:
+            cart.coupon = None
+            cart.save()
     if cart.cart_items.all().count()==0:
         cart.delete()
     # if cart.coupon:
-    if cart.get_total_price() < cart.coupon.minimum_amount:
-        cart.coupon = None
-        cart.save()
     return HttpResponseRedirect(request.META.get('HTTP_REFERER')) 
 
 
 def cart(request):
-    cart =  Cart.objects.get_or_create(is_paid=False, user=request.user)
-    client = razorpay.Client(auth=(settings.razor_pay_key_id, settings.key_secret))
-    data = { "amount": cart[0].get_discounted_price()*100, "currency": "INR", "receipt": "order_rcptid_11" }
-    payment = client.order.create(data=data)
-    contex = {'cart' : cart[0],'payment':payment,'key':settings.razor_pay_key_id}
-    cart[0].razor_pay_order_id = payment['id']
-    cart[0].save()
-    print(contex)
-    return render(request, 'accounts/cart.html',contex)
+    cart =  Cart.objects.filter(is_paid=False, user=request.user)
+    if cart:
+        client = razorpay.Client(auth=(settings.razor_pay_key_id, settings.key_secret))
+        data = { "amount": cart[0].get_discounted_price()*100, "currency": "INR", "receipt": "order_rcptid_11" }
+        payment = client.order.create(data=data)
+        contex = {'cart' : cart[0],'payment':payment,'key':settings.razor_pay_key_id}
+        cart[0].razorpay_order_id = payment['id']
+        cart[0].save()
+        print(contex)
+        return render(request, 'accounts/cart.html',contex)
+    return render(request, 'accounts/cart.html')
 
 
 def apply_coupon(request):
@@ -117,9 +121,14 @@ def apply_coupon(request):
         if cart.get_total_price() < coupon.minimum_amount:
             messages.warning(request,f"The Minimum Amount for Coupon is {coupon.minimum_amount}")
             return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+        
         if cart.coupon:
              messages.warning(request,"Coupon Already In Use")
         else:
+            if coupon:
+                if coupon.is_expired:
+                    messages.warning(request,"Coupon is Expired")
+                    return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
             cart.coupon = coupon
             cart.save()
             coupon.is_expired = True
@@ -133,3 +142,16 @@ def remove_coupon(request):
     cart.coupon = None
     cart.save()
     return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+def success(request):
+    razorpay_order_id = request.GET.get('order_id')
+    razorpay_payment_id = request.GET.get('razorpay_payment_id')
+    razorpay_signature = request.GET.get('razorpay_signature')
+    cart = Cart.objects.get(razorpay_order_id=razorpay_order_id)
+    cart.razorpay_payment_id = razorpay_payment_id
+    cart.razorpay_signature = razorpay_signature
+    cart.is_paid = True
+    if cart.coupon:
+        cart.coupon.is_expired = True
+    cart.save()
+    return HttpResponse('Payment Success')

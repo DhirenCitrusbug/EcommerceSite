@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import login_page, register_page, activate_email
-from . views import add_to_cart, cart, remove_coupon, remove_from_cart, apply_coupon
+from . views import add_to_cart, cart, remove_coupon, remove_from_cart, apply_coupon, success
 
 urlpatterns = [
     path('login/', login_page, name='login' ),
@@ -11,5 +11,6 @@ urlpatterns = [
     path('cart/',cart,name='cart'),
     path('apply_coupon/',apply_coupon,name='apply_coupon'),
     path('remove_coupon/',remove_coupon,name='remove_coupon'),
+    path('success/',success,name='success'),
 ]
 
